@@ -13,25 +13,27 @@ class StudentSerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'email', 'enrollment_date', 'is_active', 'roll_number']
 
 class RegisterSerializer(serializers.ModelSerializer):
-    phone = serializers.CharField(required=True, write_only=True)
-    first_name = serializers.CharField(required=True)
-    last_name = serializers.CharField(required=True)
+    password = serializers.CharField(write_only=True)
+    role = serializers.ChoiceField(
+        choices=Profile.ROLE_CHOICES,
+        default='STUDENT'
+    )
 
     class Meta:
         model = User
-        fields = ['username', 'password', 'phone', 'first_name','last_name']
-        extra_kwargs = {'password': {'write_only': True}}
+        fields = ['id', 'username', 'email', 'password', 'role']
+
     def create(self, validated_data):
-        phone = validated_data.pop('phone')
-        first_name = validated_data.pop('first_name')
-        last_name = validated_data.pop('last_name')
+        role = validated_data.pop('role')
+
         user = User.objects.create_user(
             username=validated_data['username'],
-            password=validated_data['password'],
-            first_name=first_name,
-            last_name=last_name
+            email=validated_data.get('email'),
+            password=validated_data['password']
         )
-        Profile.objects.create(user=user, phone=phone)
+
+        Profile.objects.create(user=user, role=role)
+
         return user
     
 class loginSerializer(serializers.Serializer):
@@ -67,3 +69,40 @@ class ResultsSerializer(serializers.ModelSerializer):
     class Meta:
         model = Results
         fields = ['id', 'submission', 'score', 'feedback']
+
+class UserSerializer(serializers.ModelSerializer):
+    role = serializers.CharField(source='profile.role', read_only=True)
+    phone = serializers.CharField(source='profile.phone', required=False)
+    address = serializers.CharField(source='profile.address', required=False)
+    bio = serializers.CharField(source='profile.bio', required=False)
+
+    class Meta:
+        model = User
+        fields = [
+            'id',
+            'username',
+            'email',
+            'first_name',
+            'last_name',
+            'role',
+            'phone',
+            'address',
+            'bio',
+        ]
+
+    def update(self, instance, validated_data):
+        profile_data = validated_data.pop('profile', {})
+
+        instance.username = validated_data.get('username', instance.username)
+        instance.email = validated_data.get('email', instance.email)
+        instance.first_name = validated_data.get('first_name', instance.first_name)
+        instance.last_name = validated_data.get('last_name', instance.last_name)
+        instance.save()
+
+        profile = instance.profile
+        profile.phone = profile_data.get('phone', profile.phone)
+        profile.address = profile_data.get('address', profile.address)
+        profile.bio = profile_data.get('bio', profile.bio)
+        profile.save()
+
+        return instance

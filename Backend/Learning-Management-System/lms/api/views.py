@@ -1,13 +1,14 @@
 from django.shortcuts import render
-from rest_framework import generics
+from rest_framework import generics,permissions
 from .models import Course, Enrollment, Lesson, Results, Submission, Teacher, Student, Profile, Assignment
-from .serializers import TeacherSerializer, StudentSerializer, RegisterSerializer, loginSerializer,CourseSerializer, EnrollmentSerializer, LessonSerializer, AssignmentSerializer, SubmissionSerializer, ResultsSerializer
+from .serializers import TeacherSerializer, StudentSerializer, RegisterSerializer, loginSerializer,CourseSerializer, EnrollmentSerializer, LessonSerializer, AssignmentSerializer, SubmissionSerializer, ResultsSerializer, UserSerializer
 from django.contrib.auth.models import User
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.permissions import IsAuthenticated
+from django.contrib.auth import authenticate
 
 
 
@@ -37,54 +38,126 @@ class StudentRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes=[IsAuthenticated]
 
 class RegisterView(generics.CreateAPIView):
-    """User registration view."""
-    queryset = User.objects.all()
     serializer_class = RegisterSerializer
+    permission_classes = [permissions.AllowAny]
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+
+        if serializer.is_valid():
+            user = serializer.save()
+
+            refresh = RefreshToken.for_user(user)
+
+            return Response({
+                'message': 'User registered successfully',
+                'user': UserSerializer(user).data,
+                'tokens': {
+                    'refresh': str(refresh),
+                    'access': str(refresh.access_token),
+                }
+            }, status=status.HTTP_201_CREATED)
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
 
 class LoginView(APIView):
-    """Login view using phone and password."""
+    permission_classes = [permissions.AllowAny]
 
     def post(self, request):
-        serializer = loginSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        phone = serializer.validated_data['phone']
-        password = serializer.validated_data['password']
+        username = request.data.get('username')
+        password = request.data.get('password')
 
-        try:
-            profile = Profile.objects.get(phone=phone)
-            user = profile.user
-        except Profile.DoesNotExist:
-            return Response({'error': 'Invalid phone or password'}, status=status.HTTP_400_BAD_REQUEST)
+        user = authenticate(username=username, password=password)
 
-        if not user.check_password(password):
-            return Response({'error': 'Invalid phone or password'}, status=status.HTTP_400_BAD_REQUEST)
+        if user is None:
+            return Response({
+                'error': 'Invalid username or password'
+            }, status=status.HTTP_401_UNAUTHORIZED)
 
-        tokens = get_tokens_for_user(user)
+        refresh = RefreshToken.for_user(user)
+
         return Response({
             'message': 'Login successful',
-            'user_id': user.id,
-            'username': user.username,
-            'tokens': tokens
+            'user': UserSerializer(user).data,
+            'tokens': {
+                'refresh': str(refresh),
+                'access': str(refresh.access_token),
+            }
         })
+    
+class LogoutView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
 
-def get_tokens_for_user(user):
-    """Helper to get JWT tokens for a user."""
-    refresh = RefreshToken.for_user(user)
-    return {
-        'refresh': str(refresh),
-        'access': str(refresh.access_token),
-    }
-class profileView(APIView):
-    permission_classes=[IsAuthenticated]
+    def post(self, request):
+        refresh_token = request.data.get('refresh')
+
+        if refresh_token is None:
+            return Response({
+                'error': 'Refresh token is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            token = RefreshToken(refresh_token)
+            token.blacklist()
+
+            return Response({
+                'message': 'Logout successful'
+            }, status=status.HTTP_200_OK)
+
+        except Exception:
+            return Response({
+                'error': 'Invalid token'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+class ProfileView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        profile = Profile.objects.get(user=request.user)
-        return Response({     
-        'username': request.user.username,
-        'phone': profile.phone,
-        'first_name': request.user.first_name,
-        'last_name': request.user.last_name
-    })
+        serializer = UserSerializer(request.user)
+        return Response(serializer.data)
+
+    def put(self, request):
+        serializer = UserSerializer(
+            request.user,
+            data=request.data,
+            partial=True
+        )
+
+        if serializer.is_valid():
+            serializer.save()
+            return Response({
+                'message': 'Profile updated successfully',
+                'user': serializer.data
+            })
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class LogoutView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        refresh_token = request.data.get('refresh')
+
+        if refresh_token is None:
+            return Response({
+                'error': 'Refresh token is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            token = RefreshToken(refresh_token)
+            token.blacklist()
+
+            return Response({
+                'message': 'Logout successful'
+            }, status=status.HTTP_200_OK)
+
+        except Exception:
+            return Response({
+                'error': 'Invalid token'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+
 class CourseListCreateView(generics.ListCreateAPIView):
     queryset = Course.objects.all()
     serializer_class = CourseSerializer  

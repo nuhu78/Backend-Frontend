@@ -1,5 +1,6 @@
 from django.urls import include, path
 from . import views
+from rest_framework_simplejwt.views import TokenRefreshView
 from rest_framework.routers import DefaultRouter
 # router = DefaultRouter()
 # router.register('teacher', views.TeacherListCreateView, basename='teacher')
@@ -9,8 +10,12 @@ from rest_framework.routers import DefaultRouter
 
 urlpatterns = [
    # path('', include(router.urls)),
-   path('login/',views.LoginView.as_view(),name='login'),
-   path('register/',views.RegisterView.as_view(),name='register'),
+     path('auth/register/',views.RegisterView.as_view(), name='register'),
+    path('auth/login/', views.LoginView.as_view(), name='login'),
+    path('auth/logout/', views.LogoutView.as_view(), name='logout'),
+    path('auth/profile/', views.ProfileView.as_view(), name='profile'),
+
+   path('auth/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
 
    path('teachers/',views.TeacherListCreateView.as_view(),name='teacher-list-create'),
    path('teachers/<int:pk>/',views.TeacherRetrieveUpdateDestroyView.as_view(),name='teacher-detail'),
@@ -18,7 +23,7 @@ urlpatterns = [
    path('students/',views.StudentListCreateView.as_view(),name='student-list-create'),
    path('students/<int:pk>/',views.StudentRetrieveUpdateDestroyView.as_view(),name='student-detail'),
 
-   path('profile/',views.profileView.as_view(),name='profile'),
+
 
    path('courses/',views.CourseListCreateView.as_view(),name='course-list-create'),
    path('courses/<int:pk>/',views.CourseRetrieveUpdateDestroyView.as_view(),name='course-detail'),
