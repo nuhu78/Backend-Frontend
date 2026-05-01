@@ -217,3 +217,35 @@ class ResetPasswordSerializer(serializers.Serializer):
         return {
             'message': 'Password reset successful'
         }    
+    
+class AdminUserSerializer(serializers.ModelSerializer):
+    role = serializers.CharField(source='profile.role')
+
+    class Meta:
+        model = User
+        fields = [
+            'id',
+            'username',
+            'email',
+            'first_name',
+            'last_name',
+            'role',
+            'is_active',
+            'date_joined',
+        ]
+
+    def update(self, instance, validated_data):
+        profile_data = validated_data.pop('profile', {})
+
+        instance.username = validated_data.get('username', instance.username)
+        instance.email = validated_data.get('email', instance.email)
+        instance.first_name = validated_data.get('first_name', instance.first_name)
+        instance.last_name = validated_data.get('last_name', instance.last_name)
+        instance.is_active = validated_data.get('is_active', instance.is_active)
+        instance.save()
+
+        if 'role' in profile_data:
+            instance.profile.role = profile_data['role']
+            instance.profile.save()
+
+        return instance   

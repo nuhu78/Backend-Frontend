@@ -6,6 +6,7 @@ router = DefaultRouter()
 router.register('categories', views.CourseCategoryViewSet, basename='categories')
 router.register('courses', views.CourseViewSet, basename='courses')
 router.register('enrollments', views.EnrollmentViewSet, basename='enrollments')
+router.register('admin/users', views.AdminUserViewSet, basename='admin-users')
 
 
 urlpatterns = [
@@ -29,11 +30,7 @@ urlpatterns = [
 
 
 
-   # Course and Enrollment routes are handled by the router (see bottom of file)
-   # path('courses/',views.CourseListCreateView.as_view(),name='course-list-create'),
-   # path('courses/<int:pk>/',views.CourseRetrieveUpdateDestroyView.as_view(),name='course-detail'),
-   # path('enrollments/',views.EnrollmentListCreateView.as_view(),name='enrollment-list-create'),
-   # path('enrollments/<int:pk>/',views.EnrollmentRetrieveUpdateDestroyView.as_view(),name='enrollment-detail'),
+   
    path('lessons/',views.LessonListCreateView.as_view(),name='lesson-list-create'),
    path('lessons/<int:pk>/',views.LessonRetrieveUpdateDestroyAPIView.as_view(),name='lesson-detail'),
 

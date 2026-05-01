@@ -1,8 +1,18 @@
 from django.shortcuts import render
 from rest_framework import generics,permissions
 from .models import Course, Enrollment, Lesson, Results, Submission, Teacher, Student, Profile, Assignment, CourseCategory
-from .serializers import TeacherSerializer, StudentSerializer, RegisterSerializer, loginSerializer,CourseSerializer, EnrollmentSerializer, LessonSerializer, AssignmentSerializer, SubmissionSerializer, ResultsSerializer, UserSerializer, ForgotPasswordSerializer, ResetPasswordSerializer, CourseCategorySerializer
-from .permissions import IsAdminRole, IsAdminOrInstructor, IsStudentRole
+from .serializers import AdminUserSerializer, TeacherSerializer, StudentSerializer, RegisterSerializer, loginSerializer,CourseSerializer, EnrollmentSerializer, LessonSerializer, AssignmentSerializer, SubmissionSerializer, ResultsSerializer, UserSerializer, ForgotPasswordSerializer, ResetPasswordSerializer, CourseCategorySerializer
+from rest_framework import viewsets, permissions, status
+from rest_framework.response import Response
+
+from .permissions import (
+    get_user_role,
+    IsAdminRole,
+    IsAdminOrInstructor,
+    IsStudentRole,
+    IsCourseOwnerOrAdmin,
+    IsEnrollmentOwnerOrAdminOrInstructor,
+)
 
 from django.contrib.auth.models import User
 from rest_framework import viewsets, status
@@ -161,52 +171,118 @@ class LogoutView(APIView):
 
 
 class CourseCategoryViewSet(viewsets.ModelViewSet):
-    queryset = CourseCategory.objects.all()
+    queryset = CourseCategory.objects.all().order_by('name')
     serializer_class = CourseCategorySerializer
 
     def get_permissions(self):
-        if self.request.method in ['GET']:
+        if self.action in ['list', 'retrieve']:
             return [permissions.IsAuthenticated()]
-        return [IsAdminRole()]
 
+        return [IsAdminRole()]
 
 class CourseViewSet(viewsets.ModelViewSet):
     serializer_class = CourseSerializer
 
     def get_queryset(self):
         user = self.request.user
+        role = get_user_role(user)
 
-        if user.profile.role == 'ADMIN':
-            return Course.objects.all()
+        if role == 'ADMIN':
+            return Course.objects.all().order_by('-created_at')
 
-        if user.profile.role == 'INSTRUCTOR':
-            return Course.objects.filter(instructor=user)
+        if role == 'INSTRUCTOR':
+            return Course.objects.filter(instructor=user).order_by('-created_at')
 
-        return Course.objects.filter(is_published=True)
+        return Course.objects.filter(is_published=True).order_by('-created_at')
 
     def get_permissions(self):
-        if self.request.method in ['GET']:
+        if self.action in ['list', 'retrieve']:
             return [permissions.IsAuthenticated()]
 
-        return [IsAdminOrInstructor()]
+        if self.action == 'create':
+            return [IsAdminOrInstructor()]
+
+        if self.action in ['update', 'partial_update', 'destroy']:
+            return [permissions.IsAuthenticated(), IsCourseOwnerOrAdmin()]
+
+        return [permissions.IsAuthenticated()]
 
     def perform_create(self, serializer):
         serializer.save(instructor=self.request.user)
-
 
 class EnrollmentViewSet(viewsets.ModelViewSet):
     serializer_class = EnrollmentSerializer
 
     def get_queryset(self):
         user = self.request.user
+        role = get_user_role(user)
 
-        if user.profile.role == 'ADMIN':
-            return Enrollment.objects.all()
+        if role == 'ADMIN':
+            return Enrollment.objects.all().order_by('-enrolled_at')
 
-        if user.profile.role == 'INSTRUCTOR':
-            return Enrollment.objects.filter(course__instructor=user)
+        if role == 'INSTRUCTOR':
+            return Enrollment.objects.filter(
+                course__instructor=user
+            ).order_by('-enrolled_at')
 
-        return Enrollment.objects.filter(student=user)
+        return Enrollment.objects.filter(
+            student=user
+        ).order_by('-enrolled_at')
+
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            return [permissions.IsAuthenticated()]
+
+        if self.action == 'create':
+            return [IsStudentRole()]
+
+        if self.action in ['update', 'partial_update', 'destroy']:
+            return [
+                permissions.IsAuthenticated(),
+                IsEnrollmentOwnerOrAdminOrInstructor()
+            ]
+
+        return [permissions.IsAuthenticated()]
+
+    def create(self, request, *args, **kwargs):
+        course_id = request.data.get('course')
+
+        if not course_id:
+            return Response({
+                'error': 'Course ID is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            course = Course.objects.get(id=course_id, is_published=True)
+        except Course.DoesNotExist:
+            return Response({
+                'error': 'Course not found or not published'
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        already_enrolled = Enrollment.objects.filter(
+            student=request.user,
+            course=course
+        ).exists()
+
+        if already_enrolled:
+            return Response({
+                'error': 'You are already enrolled in this course'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        enrollment = Enrollment.objects.create(
+            student=request.user,
+            course=course
+        )
+
+        serializer = self.get_serializer(enrollment)
+
+        return Response({
+            'message': 'Enrollment successful',
+            'enrollment': serializer.data
+        }, status=status.HTTP_201_CREATED)
+
+    def perform_create(self, serializer):
+        serializer.save(student=self.request.user)
 
     def get_permissions(self):
         if self.request.method in ['GET']:
@@ -291,3 +367,8 @@ class ResetPasswordView(APIView):
             }, status=status.HTTP_200_OK)
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class AdminUserViewSet(viewsets.ModelViewSet):
+    queryset = User.objects.all().order_by('-date_joined')
+    serializer_class = AdminUserSerializer
+    permission_classes = [IsAdminRole]    
