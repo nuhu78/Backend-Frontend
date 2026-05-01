@@ -1,6 +1,11 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
 from .models import Teacher, Student, Profile, Course, Enrollment, Lesson, Assignment,Submission,Results
+from django.contrib.auth.tokens import PasswordResetTokenGenerator
+from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
+from django.utils.encoding import smart_bytes, force_str
+from django.core.mail import send_mail
+from django.conf import settings
 
 class TeacherSerializer(serializers.ModelSerializer):
     class Meta:
@@ -106,3 +111,63 @@ class UserSerializer(serializers.ModelSerializer):
         profile.save()
 
         return instance
+
+class ForgotPasswordSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+    def validate(self, attrs):
+        email = attrs.get('email')
+
+        try:
+            user = User.objects.get(email=email)
+        except User.DoesNotExist:
+            raise serializers.ValidationError({
+                'email': 'No user found with this email'
+            })
+
+        uid = urlsafe_base64_encode(smart_bytes(user.id))
+        token = PasswordResetTokenGenerator().make_token(user)
+
+        reset_link = f"http://localhost:5173/reset-password/{uid}/{token}"
+
+        send_mail(
+            subject='LMS Password Reset',
+            message=f'Use this link to reset your password: {reset_link}',
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[user.email],
+            fail_silently=False,
+        )
+
+        attrs['message'] = 'Password reset link sent successfully'
+        return attrs
+
+
+class ResetPasswordSerializer(serializers.Serializer):
+    uid = serializers.CharField()
+    token = serializers.CharField()
+    new_password = serializers.CharField(write_only=True, min_length=8)
+
+    def validate(self, attrs):
+        uid = attrs.get('uid')
+        token = attrs.get('token')
+        new_password = attrs.get('new_password')
+
+        try:
+            user_id = force_str(urlsafe_base64_decode(uid))
+            user = User.objects.get(id=user_id)
+        except Exception:
+            raise serializers.ValidationError({
+                'error': 'Invalid reset link'
+            })
+
+        if not PasswordResetTokenGenerator().check_token(user, token):
+            raise serializers.ValidationError({
+                'error': 'Invalid or expired token'
+            })
+
+        user.set_password(new_password)
+        user.save()
+
+        return {
+            'message': 'Password reset successful'
+        }    

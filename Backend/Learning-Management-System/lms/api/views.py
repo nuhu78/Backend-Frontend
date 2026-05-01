@@ -1,7 +1,8 @@
 from django.shortcuts import render
 from rest_framework import generics,permissions
 from .models import Course, Enrollment, Lesson, Results, Submission, Teacher, Student, Profile, Assignment
-from .serializers import TeacherSerializer, StudentSerializer, RegisterSerializer, loginSerializer,CourseSerializer, EnrollmentSerializer, LessonSerializer, AssignmentSerializer, SubmissionSerializer, ResultsSerializer, UserSerializer
+from .serializers import TeacherSerializer, StudentSerializer, RegisterSerializer, loginSerializer,CourseSerializer, EnrollmentSerializer, LessonSerializer, AssignmentSerializer, SubmissionSerializer, ResultsSerializer, UserSerializer, ForgotPasswordSerializer, ResetPasswordSerializer
+
 from django.contrib.auth.models import User
 from rest_framework import viewsets, status
 from rest_framework.response import Response
@@ -223,3 +224,30 @@ class ResultsRetrieveUpdateDestroyAPIView(generics.RetrieveUpdateDestroyAPIView)
     queryset = Results.objects.all()
     serializer_class = ResultsSerializer
     permission_classes = [IsAuthenticated]
+
+class ForgotPasswordView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        serializer = ForgotPasswordSerializer(data=request.data)
+
+        if serializer.is_valid():
+            return Response({
+                'message': serializer.validated_data['message']
+            }, status=status.HTTP_200_OK)
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class ResetPasswordView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        serializer = ResetPasswordSerializer(data=request.data)
+
+        if serializer.is_valid():
+            return Response({
+                'message': serializer.validated_data['message']
+            }, status=status.HTTP_200_OK)
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

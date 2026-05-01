@@ -15,6 +15,9 @@ urlpatterns = [
     path('auth/logout/', views.LogoutView.as_view(), name='logout'),
     path('auth/profile/', views.ProfileView.as_view(), name='profile'),
 
+    path('auth/forgot-password/', views.ForgotPasswordView.as_view(), name='forgot_password'),
+    path('auth/reset-password/', views.ResetPasswordView.as_view(), name='reset_password'),
+
    path('auth/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
 
    path('teachers/',views.TeacherListCreateView.as_view(),name='teacher-list-create'),
