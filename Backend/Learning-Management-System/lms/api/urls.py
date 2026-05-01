@@ -2,10 +2,10 @@ from django.urls import include, path
 from . import views
 from rest_framework_simplejwt.views import TokenRefreshView
 from rest_framework.routers import DefaultRouter
-# router = DefaultRouter()
-# router.register('teacher', views.TeacherListCreateView, basename='teacher')
-# router.register('student', views.StudentListCreateView, basename='student')
-# router.register('register', views.RegisterView, basename='register')
+router = DefaultRouter()
+router.register('categories', views.CourseCategoryViewSet, basename='categories')
+router.register('courses', views.CourseViewSet, basename='courses')
+router.register('enrollments', views.EnrollmentViewSet, basename='enrollments')
 
 
 urlpatterns = [
@@ -28,12 +28,12 @@ urlpatterns = [
 
 
 
-   path('courses/',views.CourseListCreateView.as_view(),name='course-list-create'),
-   path('courses/<int:pk>/',views.CourseRetrieveUpdateDestroyView.as_view(),name='course-detail'),
 
-   path('enrollments/',views.EnrollmentListCreateView.as_view(),name='enrollment-list-create'),
-   path('enrollments/<int:pk>/',views.EnrollmentRetrieveUpdateDestroyView.as_view(),name='enrollment-detail'),
-
+   # Course and Enrollment routes are handled by the router (see bottom of file)
+   # path('courses/',views.CourseListCreateView.as_view(),name='course-list-create'),
+   # path('courses/<int:pk>/',views.CourseRetrieveUpdateDestroyView.as_view(),name='course-detail'),
+   # path('enrollments/',views.EnrollmentListCreateView.as_view(),name='enrollment-list-create'),
+   # path('enrollments/<int:pk>/',views.EnrollmentRetrieveUpdateDestroyView.as_view(),name='enrollment-detail'),
    path('lessons/',views.LessonListCreateView.as_view(),name='lesson-list-create'),
    path('lessons/<int:pk>/',views.LessonRetrieveUpdateDestroyAPIView.as_view(),name='lesson-detail'),
 
@@ -45,5 +45,6 @@ urlpatterns = [
    
    path('results/',views.ResultsListCreateView.as_view(),name='results-list-create'),
    path('results/<int:pk>/',views.ResultsRetrieveUpdateDestroyAPIView.as_view(),name='results-detail'),
-   
 ]
+
+urlpatterns += router.urls

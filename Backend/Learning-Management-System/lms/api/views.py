@@ -1,7 +1,8 @@
 from django.shortcuts import render
 from rest_framework import generics,permissions
-from .models import Course, Enrollment, Lesson, Results, Submission, Teacher, Student, Profile, Assignment
-from .serializers import TeacherSerializer, StudentSerializer, RegisterSerializer, loginSerializer,CourseSerializer, EnrollmentSerializer, LessonSerializer, AssignmentSerializer, SubmissionSerializer, ResultsSerializer, UserSerializer, ForgotPasswordSerializer, ResetPasswordSerializer
+from .models import Course, Enrollment, Lesson, Results, Submission, Teacher, Student, Profile, Assignment, CourseCategory
+from .serializers import TeacherSerializer, StudentSerializer, RegisterSerializer, loginSerializer,CourseSerializer, EnrollmentSerializer, LessonSerializer, AssignmentSerializer, SubmissionSerializer, ResultsSerializer, UserSerializer, ForgotPasswordSerializer, ResetPasswordSerializer, CourseCategorySerializer
+from .permissions import IsAdminRole, IsAdminOrInstructor, IsStudentRole
 
 from django.contrib.auth.models import User
 from rest_framework import viewsets, status
@@ -159,23 +160,62 @@ class LogoutView(APIView):
             }, status=status.HTTP_400_BAD_REQUEST)
 
 
-class CourseListCreateView(generics.ListCreateAPIView):
-    queryset = Course.objects.all()
-    serializer_class = CourseSerializer  
-    permission_classes=[IsAuthenticated]
-class CourseRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView):
-    queryset = Course.objects.all()
-    serializer_class = CourseSerializer  
-    permission_classes=[IsAuthenticated]    
+class CourseCategoryViewSet(viewsets.ModelViewSet):
+    queryset = CourseCategory.objects.all()
+    serializer_class = CourseCategorySerializer
 
-class EnrollmentListCreateView(generics.ListCreateAPIView):
-    queryset = Enrollment.objects.all()
-    serializer_class = EnrollmentSerializer  
-    permission_classes=[IsAuthenticated]
-class EnrollmentRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView):
-    queryset = Enrollment.objects.all()
-    serializer_class = EnrollmentSerializer  
-    permission_classes=[IsAuthenticated]    
+    def get_permissions(self):
+        if self.request.method in ['GET']:
+            return [permissions.IsAuthenticated()]
+        return [IsAdminRole()]
+
+
+class CourseViewSet(viewsets.ModelViewSet):
+    serializer_class = CourseSerializer
+
+    def get_queryset(self):
+        user = self.request.user
+
+        if user.profile.role == 'ADMIN':
+            return Course.objects.all()
+
+        if user.profile.role == 'INSTRUCTOR':
+            return Course.objects.filter(instructor=user)
+
+        return Course.objects.filter(is_published=True)
+
+    def get_permissions(self):
+        if self.request.method in ['GET']:
+            return [permissions.IsAuthenticated()]
+
+        return [IsAdminOrInstructor()]
+
+    def perform_create(self, serializer):
+        serializer.save(instructor=self.request.user)
+
+
+class EnrollmentViewSet(viewsets.ModelViewSet):
+    serializer_class = EnrollmentSerializer
+
+    def get_queryset(self):
+        user = self.request.user
+
+        if user.profile.role == 'ADMIN':
+            return Enrollment.objects.all()
+
+        if user.profile.role == 'INSTRUCTOR':
+            return Enrollment.objects.filter(course__instructor=user)
+
+        return Enrollment.objects.filter(student=user)
+
+    def get_permissions(self):
+        if self.request.method in ['GET']:
+            return [permissions.IsAuthenticated()]
+
+        return [IsStudentRole()]
+
+    def perform_create(self, serializer):
+        serializer.save(student=self.request.user) 
 
 class LessonListCreateView(generics.ListCreateAPIView):
     """View to list and create lessons."""

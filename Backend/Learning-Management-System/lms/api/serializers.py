@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from .models import Teacher, Student, Profile, Course, Enrollment, Lesson, Assignment,Submission,Results
+from .models import Teacher, Student, Profile, Course, Enrollment, Lesson, Assignment,Submission,Results, CourseCategory
 from django.contrib.auth.tokens import PasswordResetTokenGenerator
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils.encoding import smart_bytes, force_str
@@ -44,16 +44,62 @@ class RegisterSerializer(serializers.ModelSerializer):
 class loginSerializer(serializers.Serializer):
     phone = serializers.CharField(required=True)
     password = serializers.CharField(required=True, write_only=True)    
+class CourseCategorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CourseCategory
+        fields = ['id', 'name', 'description']
+
+
 class CourseSerializer(serializers.ModelSerializer):
+    instructor_name = serializers.CharField(
+        source='instructor.username',
+        read_only=True
+    )
+    category_name = serializers.CharField(
+        source='category.name',
+        read_only=True
+    )
+
     class Meta:
         model = Course
-        fields = ['id', 'title', 'description', 'teacher']
+        fields = [
+            'id',
+            'title',
+            'description',
+            'category',
+            'category_name',
+            'instructor',
+            'instructor_name',
+            'level',
+            'price',
+            'is_published',
+            'created_at',
+        ]
+        read_only_fields = ['instructor', 'created_at']
+
 
 class EnrollmentSerializer(serializers.ModelSerializer):
+    student_name = serializers.CharField(
+        source='student.username',
+        read_only=True
+    )
+    course_title = serializers.CharField(
+        source='course.title',
+        read_only=True
+    )
+
     class Meta:
         model = Enrollment
-        fields = ['id', 'student', 'course', 'enrollment_date']
-
+        fields = [
+            'id',
+            'student',
+            'student_name',
+            'course',
+            'course_title',
+            'enrolled_at',
+            'is_active',
+        ]
+        read_only_fields = ['student', 'enrolled_at']
 class LessonSerializer(serializers.ModelSerializer):
     class Meta:
         model = Lesson

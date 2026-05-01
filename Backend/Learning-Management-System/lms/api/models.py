@@ -1,5 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import User
+from django.utils import timezone
 
 # Create your models here.
 class Profile(models.Model):
@@ -37,22 +38,73 @@ class Student(models.Model):
 
     def __str__(self):
         return f"{self.name} - {self.email}"
+class CourseCategory(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+    description = models.TextField(blank=True, null=True)
+
+    class Meta:
+        verbose_name_plural = "Course Categories"
+
+    def __str__(self):
+        return self.name
+
+
 class Course(models.Model):
-    title = models.CharField(max_length=100)
+    LEVEL_CHOICES = (
+        ('BEGINNER', 'Beginner'),
+        ('INTERMEDIATE', 'Intermediate'),
+        ('ADVANCED', 'Advanced'),
+    )
+
+    title = models.CharField(max_length=200)
     description = models.TextField()
-    teacher = models.ForeignKey(Teacher, on_delete=models.CASCADE)
-    
+    category = models.ForeignKey(
+        CourseCategory,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='courses'
+    )
+    instructor = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='instructor_courses',
+        null=True,
+        blank=True,
+    )
+
+    level = models.CharField(
+        max_length=20,
+        choices=LEVEL_CHOICES,
+        default='BEGINNER'
+    )
+    price = models.DecimalField(max_digits=8, decimal_places=2, default=0)
+    is_published = models.BooleanField(default=True)
+    created_at = models.DateTimeField(default=timezone.now)
 
     def __str__(self):
         return self.title
 
+
 class Enrollment(models.Model):
-    student = models.ForeignKey(Student, on_delete=models.CASCADE)
-    course = models.ForeignKey(Course, on_delete=models.CASCADE)
-    enrollment_date = models.DateField(auto_now_add=True)
+    student = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='student_enrollments'
+    )
+    course = models.ForeignKey(
+        Course,
+        on_delete=models.CASCADE,
+        related_name='enrollments'
+    )
+    enrolled_at = models.DateTimeField(default=timezone.now)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        unique_together = ('student', 'course')
 
     def __str__(self):
-        return f"{self.student.name} enrolled in {self.course.title}"
+        return f"{self.student.username} enrolled in {self.course.title}"
 
 class Lesson(models.Model):
     title = models.CharField(max_length=100)
@@ -76,7 +128,7 @@ class Assignment(models.Model):
 class Submission(models.Model):
     assignment = models.ForeignKey(Assignment, on_delete=models.CASCADE)
     student = models.ForeignKey(Student, on_delete=models.CASCADE)
-    submitted_at = models.DateTimeField(auto_now_add=True)
+    submitted_at = models.DateTimeField(default=timezone.now)
     content = models.TextField()
 
     def __str__(self):
