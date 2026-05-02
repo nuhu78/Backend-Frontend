@@ -47,6 +47,64 @@ class IsCourseOwnerOrAdmin(permissions.BasePermission):
         return False
 
 
+class IsLessonOwnerOrAdminOrInstructor(permissions.BasePermission):
+    def has_object_permission(self, request, view, obj):
+        role = get_user_role(request.user)
+
+        if role == 'ADMIN':
+            return True
+
+        if role == 'INSTRUCTOR':
+            return obj.course.instructor == request.user
+
+        return False
+
+
+class IsAssignmentOwnerOrAdminOrInstructor(permissions.BasePermission):
+    def has_object_permission(self, request, view, obj):
+        role = get_user_role(request.user)
+
+        if role == 'ADMIN':
+            return True
+
+        if role == 'INSTRUCTOR':
+            return obj.course.instructor == request.user
+
+        return False
+
+
+class IsSubmissionOwnerOrAdminOrInstructor(permissions.BasePermission):
+    def has_object_permission(self, request, view, obj):
+        role = get_user_role(request.user)
+
+        if role == 'ADMIN':
+            return True
+
+        if role == 'INSTRUCTOR':
+            return obj.assignment.course.instructor == request.user
+
+        if role == 'STUDENT':
+            return obj.student.email == request.user.email
+
+        return False
+
+
+class IsResultOwnerOrAdminOrInstructor(permissions.BasePermission):
+    def has_object_permission(self, request, view, obj):
+        role = get_user_role(request.user)
+
+        if role == 'ADMIN':
+            return True
+
+        if role == 'INSTRUCTOR':
+            return obj.submission.assignment.course.instructor == request.user
+
+        if role == 'STUDENT':
+            return obj.submission.student.email == request.user.email
+
+        return False
+
+
 class IsEnrollmentOwnerOrAdminOrInstructor(permissions.BasePermission):
     def has_object_permission(self, request, view, obj):
         role = get_user_role(request.user)

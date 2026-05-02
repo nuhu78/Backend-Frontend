@@ -4,6 +4,8 @@ from .models import Course, Enrollment, Lesson, Results, Submission, Teacher, St
 from .serializers import AdminUserSerializer, TeacherSerializer, StudentSerializer, RegisterSerializer, loginSerializer,CourseSerializer, EnrollmentSerializer, LessonSerializer, AssignmentSerializer, SubmissionSerializer, ResultsSerializer, UserSerializer, ForgotPasswordSerializer, ResetPasswordSerializer, CourseCategorySerializer
 from rest_framework import viewsets, permissions, status
 from rest_framework.response import Response
+from rest_framework.decorators import action
+from datetime import date
 
 from .permissions import (
     get_user_role,
@@ -12,6 +14,10 @@ from .permissions import (
     IsStudentRole,
     IsCourseOwnerOrAdmin,
     IsEnrollmentOwnerOrAdminOrInstructor,
+    IsLessonOwnerOrAdminOrInstructor,
+    IsAssignmentOwnerOrAdminOrInstructor,
+    IsSubmissionOwnerOrAdminOrInstructor,
+    IsResultOwnerOrAdminOrInstructor,
 )
 
 from django.contrib.auth.models import User
@@ -20,7 +26,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.permissions import IsAuthenticated
-from django.contrib.auth import authenticate
+from django.contrib.auth.hashers import check_password
 
 
 
@@ -77,14 +83,25 @@ class LoginView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
-        username = request.data.get('username')
-        password = request.data.get('password')
+        serializer = loginSerializer(data={
+            'identifier': request.data.get('identifier') or request.data.get('username') or request.data.get('phone'),
+            'password': request.data.get('password'),
+        })
 
-        user = authenticate(username=username, password=password)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        identifier = serializer.validated_data['identifier']
+        password = serializer.validated_data['password']
+
+        user = User.objects.filter(username=identifier).first()
 
         if user is None:
+            user = User.objects.filter(profile__phone=identifier).first()
+
+        if user is None or not check_password(password, user.password):
             return Response({
-                'error': 'Invalid username or password'
+                'error': 'Invalid username, phone, or password'
             }, status=status.HTTP_401_UNAUTHORIZED)
 
         refresh = RefreshToken.for_user(user)
@@ -144,30 +161,6 @@ class ProfileView(APIView):
             })
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-class LogoutView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
-
-    def post(self, request):
-        refresh_token = request.data.get('refresh')
-
-        if refresh_token is None:
-            return Response({
-                'error': 'Refresh token is required'
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-        try:
-            token = RefreshToken(refresh_token)
-            token.blacklist()
-
-            return Response({
-                'message': 'Logout successful'
-            }, status=status.HTTP_200_OK)
-
-        except Exception:
-            return Response({
-                'error': 'Invalid token'
-            }, status=status.HTTP_400_BAD_REQUEST)
 
 
 class CourseCategoryViewSet(viewsets.ModelViewSet):
@@ -295,51 +288,221 @@ class EnrollmentViewSet(viewsets.ModelViewSet):
 
 class LessonListCreateView(generics.ListCreateAPIView):
     """View to list and create lessons."""
-    queryset = Lesson.objects.all()
     serializer_class = LessonSerializer
-    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        role = get_user_role(user)
+
+        if role == 'ADMIN':
+            return Lesson.objects.select_related('course').all().order_by('id')
+
+        if role == 'INSTRUCTOR':
+            return Lesson.objects.select_related('course').filter(course__instructor=user).order_by('id')
+
+        return Lesson.objects.select_related('course').filter(course__is_published=True).order_by('id')
+
+    def get_permissions(self):
+        if self.request.method in ['GET']:
+            return [IsAuthenticated()]
+
+        return [IsAdminOrInstructor()]
+
+    def perform_create(self, serializer):
+        serializer.save()
 
 class LessonRetrieveUpdateDestroyAPIView(generics.RetrieveUpdateDestroyAPIView):
     """View to retrieve, update, or delete a lesson."""
-    queryset = Lesson.objects.all()
     serializer_class = LessonSerializer
-    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Lesson.objects.select_related('course').all()
+
+    def get_permissions(self):
+        if self.request.method in ['GET']:
+            return [IsAuthenticated()]
+
+        return [IsAuthenticated(), IsLessonOwnerOrAdminOrInstructor()]
 
 class AssignmentListCreateView(generics.ListCreateAPIView):
     """View to list and create assignments."""
-    queryset = Assignment.objects.all()
     serializer_class = AssignmentSerializer
-    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        role = get_user_role(user)
+
+        if role == 'ADMIN':
+            return Assignment.objects.select_related('course', 'lesson').all().order_by('id')
+
+        if role == 'INSTRUCTOR':
+            return Assignment.objects.select_related('course', 'lesson').filter(course__instructor=user).order_by('id')
+
+        return Assignment.objects.select_related('course', 'lesson').filter(course__is_published=True).order_by('id')
+
+    def get_permissions(self):
+        if self.request.method in ['GET']:
+            return [IsAuthenticated()]
+
+        return [IsAdminOrInstructor()]
+
+    def perform_create(self, serializer):
+        serializer.save()
 
 class AssignmentRetrieveUpdateDestroyAPIView(generics.RetrieveUpdateDestroyAPIView):
     """View to retrieve, update, or delete an assignment."""
-    queryset = Assignment.objects.all()
     serializer_class = AssignmentSerializer
-    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Assignment.objects.select_related('course', 'lesson').all()
+
+    def get_permissions(self):
+        if self.request.method in ['GET']:
+            return [IsAuthenticated()]
+
+        return [IsAuthenticated(), IsAssignmentOwnerOrAdminOrInstructor()]
 
 class SubmissionListCreateView(generics.ListCreateAPIView):
     """View to list and create submissions."""
-    queryset = Submission.objects.all()
     serializer_class = SubmissionSerializer
-    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        role = get_user_role(user)
+
+        if role == 'ADMIN':
+            return Submission.objects.select_related('student', 'assignment', 'assignment__course').all().order_by('id')
+
+        if role == 'INSTRUCTOR':
+            return Submission.objects.select_related('student', 'assignment', 'assignment__course').filter(
+                assignment__course__instructor=user
+            ).order_by('id')
+
+        return Submission.objects.select_related('student', 'assignment', 'assignment__course').filter(
+            student__email=user.email
+        ).order_by('id')
+
+    def get_permissions(self):
+        if self.request.method in ['GET']:
+            return [IsAuthenticated()]
+
+        return [IsStudentRole()]
+
+    def create(self, request, *args, **kwargs):
+        if get_user_role(request.user) != 'STUDENT':
+            return Response({
+                'error': 'Only students can create submissions'
+            }, status=status.HTTP_403_FORBIDDEN)
+
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        student, _ = Student.objects.get_or_create(
+            email=request.user.email,
+            defaults={
+                'name': request.user.username,
+                'enrollment_date': date.today(),
+            }
+        )
+
+        submission = serializer.save(student=student)
+        output = self.get_serializer(submission)
+
+        return Response({
+            'message': 'Submission created successfully',
+            'submission': output.data,
+        }, status=status.HTTP_201_CREATED)
+
+    def perform_create(self, serializer):
+        student, _ = Student.objects.get_or_create(
+            email=self.request.user.email,
+            defaults={
+                'name': self.request.user.username,
+                'enrollment_date': date.today(),
+            }
+        )
+        serializer.save(student=student)
 
 class SubmissionRetrieveUpdateDestroyAPIView(generics.RetrieveUpdateDestroyAPIView):
     """View to retrieve, update, or delete a submission."""
-    queryset = Submission.objects.all()
     serializer_class = SubmissionSerializer
-    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        role = get_user_role(user)
+
+        if role == 'ADMIN':
+            return Submission.objects.select_related('student', 'assignment', 'assignment__course').all()
+
+        if role == 'INSTRUCTOR':
+            return Submission.objects.select_related('student', 'assignment', 'assignment__course').filter(
+                assignment__course__instructor=user
+            )
+
+        return Submission.objects.select_related('student', 'assignment', 'assignment__course').filter(
+            student__email=user.email
+        )
+
+    def get_permissions(self):
+        if self.request.method in ['GET']:
+            return [IsAuthenticated()]
+
+        return [IsAuthenticated(), IsSubmissionOwnerOrAdminOrInstructor()]
 
 class ResultsListCreateView(generics.ListCreateAPIView):
     """View to list and create results."""
-    queryset = Results.objects.all()
     serializer_class = ResultsSerializer
-    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        role = get_user_role(user)
+
+        if role == 'ADMIN':
+            return Results.objects.select_related('submission', 'submission__student', 'submission__assignment', 'submission__assignment__course').all().order_by('id')
+
+        if role == 'INSTRUCTOR':
+            return Results.objects.select_related('submission', 'submission__student', 'submission__assignment', 'submission__assignment__course').filter(
+                submission__assignment__course__instructor=user
+            ).order_by('id')
+
+        return Results.objects.select_related('submission', 'submission__student', 'submission__assignment', 'submission__assignment__course').filter(
+            submission__student__email=user.email
+        ).order_by('id')
+
+    def get_permissions(self):
+        if self.request.method in ['GET']:
+            return [IsAuthenticated()]
+
+        return [IsAdminOrInstructor()]
+
+    def perform_create(self, serializer):
+        serializer.save()
 
 class ResultsRetrieveUpdateDestroyAPIView(generics.RetrieveUpdateDestroyAPIView):
     """View to retrieve, update, or delete a result."""
-    queryset = Results.objects.all()
     serializer_class = ResultsSerializer
-    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        role = get_user_role(user)
+
+        if role == 'ADMIN':
+            return Results.objects.select_related('submission', 'submission__student', 'submission__assignment', 'submission__assignment__course').all()
+
+        if role == 'INSTRUCTOR':
+            return Results.objects.select_related('submission', 'submission__student', 'submission__assignment', 'submission__assignment__course').filter(
+                submission__assignment__course__instructor=user
+            )
+
+        return Results.objects.select_related('submission', 'submission__student', 'submission__assignment', 'submission__assignment__course').filter(
+            submission__student__email=user.email
+        )
+
+    def get_permissions(self):
+        if self.request.method in ['GET']:
+            return [IsAuthenticated()]
+
+        return [IsAuthenticated(), IsResultOwnerOrAdminOrInstructor()]
 
 class ForgotPasswordView(APIView):
     permission_classes = [permissions.AllowAny]
@@ -371,4 +534,36 @@ class ResetPasswordView(APIView):
 class AdminUserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all().order_by('-date_joined')
     serializer_class = AdminUserSerializer
-    permission_classes = [IsAdminRole]    
+    permission_classes = [IsAdminRole]
+
+    @action(detail=False, methods=['get'])
+    def summary(self, request):
+        return Response({
+            'total_users': User.objects.count(),
+            'active_users': User.objects.filter(is_active=True).count(),
+            'inactive_users': User.objects.filter(is_active=False).count(),
+            'role_counts': {
+                'ADMIN': User.objects.filter(profile__role='ADMIN').count(),
+                'INSTRUCTOR': User.objects.filter(profile__role='INSTRUCTOR').count(),
+                'STUDENT': User.objects.filter(profile__role='STUDENT').count(),
+            },
+        })
+
+
+class DashboardSummaryView(APIView):
+    permission_classes = [IsAdminRole]
+
+    def get(self, request):
+        return Response({
+            'users_total': User.objects.count(),
+            'courses_total': Course.objects.count(),
+            'published_courses': Course.objects.filter(is_published=True).count(),
+            'categories_total': CourseCategory.objects.count(),
+            'enrollments_total': Enrollment.objects.count(),
+            'active_enrollments': Enrollment.objects.filter(is_active=True).count(),
+            'role_counts': {
+                'ADMIN': User.objects.filter(profile__role='ADMIN').count(),
+                'INSTRUCTOR': User.objects.filter(profile__role='INSTRUCTOR').count(),
+                'STUDENT': User.objects.filter(profile__role='STUDENT').count(),
+            },
+        })   

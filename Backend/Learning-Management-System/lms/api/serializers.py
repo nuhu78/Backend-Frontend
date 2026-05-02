@@ -19,6 +19,7 @@ class StudentSerializer(serializers.ModelSerializer):
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
+    phone = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     role = serializers.ChoiceField(
         choices=Profile.ROLE_CHOICES,
         default='STUDENT'
@@ -26,10 +27,11 @@ class RegisterSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ['id', 'username', 'email', 'password', 'role']
+        fields = ['id', 'username', 'email', 'password', 'role', 'phone']
 
     def create(self, validated_data):
         role = validated_data.pop('role')
+        phone = validated_data.pop('phone', None)
 
         user = User.objects.create_user(
             username=validated_data['username'],
@@ -37,12 +39,16 @@ class RegisterSerializer(serializers.ModelSerializer):
             password=validated_data['password']
         )
 
-        Profile.objects.create(user=user, role=role)
+        profile = Profile.objects.create(user=user, role=role)
+
+        if phone:
+            profile.phone = phone
+            profile.save(update_fields=['phone'])
 
         return user
     
 class loginSerializer(serializers.Serializer):
-    phone = serializers.CharField(required=True)
+    identifier = serializers.CharField(required=True)
     password = serializers.CharField(required=True, write_only=True)    
 class CourseCategorySerializer(serializers.ModelSerializer):
     class Meta:
@@ -122,10 +128,10 @@ class ResultsSerializer(serializers.ModelSerializer):
         fields = ['id', 'submission', 'score', 'feedback']
 
 class UserSerializer(serializers.ModelSerializer):
-    role = serializers.CharField(source='profile.role', read_only=True)
-    phone = serializers.CharField(source='profile.phone', required=False)
-    address = serializers.CharField(source='profile.address', required=False)
-    bio = serializers.CharField(source='profile.bio', required=False)
+    role = serializers.CharField(source='profile.role', required=False)
+    phone = serializers.CharField(source='profile.phone', required=False, allow_blank=True, allow_null=True)
+    address = serializers.CharField(source='profile.address', required=False, allow_blank=True, allow_null=True)
+    bio = serializers.CharField(source='profile.bio', required=False, allow_blank=True, allow_null=True)
 
     class Meta:
         model = User
@@ -141,6 +147,10 @@ class UserSerializer(serializers.ModelSerializer):
             'bio',
         ]
 
+    def to_representation(self, instance):
+        Profile.objects.get_or_create(user=instance)
+        return super().to_representation(instance)
+
     def update(self, instance, validated_data):
         profile_data = validated_data.pop('profile', {})
 
@@ -150,7 +160,7 @@ class UserSerializer(serializers.ModelSerializer):
         instance.last_name = validated_data.get('last_name', instance.last_name)
         instance.save()
 
-        profile = instance.profile
+        profile, _ = Profile.objects.get_or_create(user=instance)
         profile.phone = profile_data.get('phone', profile.phone)
         profile.address = profile_data.get('address', profile.address)
         profile.bio = profile_data.get('bio', profile.bio)
@@ -219,7 +229,7 @@ class ResetPasswordSerializer(serializers.Serializer):
         }    
     
 class AdminUserSerializer(serializers.ModelSerializer):
-    role = serializers.CharField(source='profile.role')
+    role = serializers.CharField(source='profile.role', required=False)
 
     class Meta:
         model = User
@@ -234,6 +244,10 @@ class AdminUserSerializer(serializers.ModelSerializer):
             'date_joined',
         ]
 
+    def to_representation(self, instance):
+        Profile.objects.get_or_create(user=instance)
+        return super().to_representation(instance)
+
     def update(self, instance, validated_data):
         profile_data = validated_data.pop('profile', {})
 
@@ -244,8 +258,10 @@ class AdminUserSerializer(serializers.ModelSerializer):
         instance.is_active = validated_data.get('is_active', instance.is_active)
         instance.save()
 
+        profile, _ = Profile.objects.get_or_create(user=instance)
+
         if 'role' in profile_data:
-            instance.profile.role = profile_data['role']
-            instance.profile.save()
+            profile.role = profile_data['role']
+            profile.save(update_fields=['role'])
 
         return instance   
